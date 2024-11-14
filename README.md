@@ -1,7 +1,7 @@
 <h1 align="center">
   <a href="https://github.com/brysonnoble/CSE2010-Final-Project/blob/main/termProject.pdf">Full Project Outline</a>
 </h1>
-<center><i><b>Quick Breakdown of what has to be done and can be used:</b></i></center>
+<i align="center"><b>Quick Breakdown of what has to be done and can be used:</b></i>
 
 Key Functional Requirements:
 
