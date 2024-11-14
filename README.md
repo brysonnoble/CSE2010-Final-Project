@@ -1,3 +1,3 @@
 <h1 align="center">
-  <a href="https://github.com/brysonnoble/CSE2010-Final-Project/blob/main/termProject.pdf">Project Outline</a>
-</h1>h1>
+  <a href="https://github.com/brysonnoble/CSE2010-Final-Project/blob/main/termProject.pdf">Full Project Outline</a>
+</h1>
