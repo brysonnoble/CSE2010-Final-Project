@@ -6,7 +6,7 @@
 Key Functional Requirements:
 
     SmartWord Initialization: Initializes a list of English words to use in predictions.
-    Old Messages Processing: Processes old messages to adapt suggestions to a user’s past behavior.
+    (Calvin) Old Messages Processing: Processes old messages to adapt suggestions to a user’s past behavior.
     Guess Function: Provides up to 3 word suggestions as a user types.
     Feedback Mechanism: Incorporates feedback to improve the accuracy of future guesses.
 
