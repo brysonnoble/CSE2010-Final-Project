@@ -12,6 +12,8 @@ Description of the overall algorithm:
 
 */
 
+import java.util.ArrayList;
+import java.util.List;
 
 public class SmartWord
 {
@@ -56,6 +58,21 @@ public class SmartWord
     }
 
     return guesses;
+  }
+
+  private void collectWords(final TrieNode node, final String prefix, final List<String> matches) {
+    // stop at 3 guesses
+    if (matches.size() >= 3) {
+      return;
+    }
+
+    // if less than 3 guesses repeat
+    if (node.isWord) {
+      matches.add(prefix);
+    }
+    for (final char c : node.children.keySet()) {
+      collectWords(node.children.get(c), prefix + c, matches);
+    }
   }
 
   // feedback on the 3 guesses from the user
