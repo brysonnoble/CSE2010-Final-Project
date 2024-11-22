@@ -11,7 +11,8 @@ Description of the overall algorithm:
 
 
 */
-
+import java.io.*;
+import java.util.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,11 +20,24 @@ public class SmartWord
 {
   final String[] guesses = new String[3];  // 3 guesses from SmartWord
 
-  // initialize SmartWord with a file of English words
-  public SmartWord (final String wordFile)
-  {
-
-  }
+  private final Trie trie;
+    
+    // Initialize the tree with the words from the file:
+    public SmartWord(String wordFile) 
+        this.trie = new Trie();
+        try (BufferedReader br = new BufferedReader(new FileReader(wordFile))) {
+            String word;
+            while ((word = br.readLine()) != null) {
+                // Normalize the input for consistent matching by putting every word in lower case:
+                word = word.toLowerCase().trim();
+                if (!word.isEmpty()) {
+                    trie.insert(word);
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Error reading word file: " + e.getMessage());
+        }
+    }
 
   // process old messages from oldMessageFile
   public void processOldMessages (final String oldMessageFile)
