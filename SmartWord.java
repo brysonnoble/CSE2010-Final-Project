@@ -25,6 +25,7 @@ public class SmartWord
     
     // Initialize the tree with the words from the file:
     public SmartWord(String wordFile) 
+    {
         this.trie = new Trie();
         try (BufferedReader br = new BufferedReader(new FileReader(wordFile))) {
             String word;
@@ -54,7 +55,7 @@ public class SmartWord
             for (String word: words)
               {
                 word = word.toLowerCase();
-                String characterToRemove = "[,.!?|;:/()\\[\\]_#@\"-]+";
+                String charactersToRemove = "[,.!?|;:/()\\[\\]_#@\"-]+";
                 word = word.replaceAll(charactersToRemove, "");
                 // Check if the word has already been added to list
                 if (!checkWordList(word))
