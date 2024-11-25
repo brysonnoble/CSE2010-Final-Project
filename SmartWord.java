@@ -54,6 +54,7 @@ public class SmartWord
             String[] words = line.split(" ");
             for (String word: words)
               {
+                // Allows every word to appear in the list with no weird punctuation and capitalization errors
                 word = word.toLowerCase();
                 String charactersToRemove = "[,.!?|;:/()\\[\\]_#@\"-]+";
                 word = word.replaceAll(charactersToRemove, "");
