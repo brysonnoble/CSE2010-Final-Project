@@ -1,20 +1,19 @@
 /*
 
 Authors (group members): Ashley McKim, Bryson Noble, Calvin Rutherford, Matteo Caruso
-Email addresses of group members:
+Email addresses of group members: , , crutherford2023@my.fit.edu
 Group name: 34c
 
 Course: CSE2010
-Section:
+Section: 3 and 4
 
-Description of the overall algorithm:
+Description of the overall algorithm: Autofill function that takes old text recommendations in order to guess how to fill
+words in new texts, overall speeding up the texting process.
 
 
 */
 import java.io.*;
 import java.util.*;
-import java.util.ArrayList;
-import java.util.List;
 
 public class SmartWord
 {
