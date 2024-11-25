@@ -19,6 +19,7 @@ import java.util.List;
 public class SmartWord
 {
   final String[] guesses = new String[3];  // 3 guesses from SmartWord
+  public static TreeMap<String, Integer> wordList = new TreeMap<>();
 
   private final Trie trie;
     
@@ -42,8 +43,45 @@ public class SmartWord
   // process old messages from oldMessageFile
   public void processOldMessages (final String oldMessageFile)
   {
-    
+    // Reads input from old text files
+    try (BufferedReader oldInput = new BufferedReader(new FileReader(oldMessageFile)))
+      {
+        String line;
+        int count = 1;
+        while ((line = oldInput.readLine()) != null)
+          {
+            String[] words = line.split(" ");
+            for (String word: words)
+              {
+                word = word.toLowerCase();
+                String characterToRemove = "[,.!?|;:/()\\[\\]_#@\"-]+";
+                word = word.replaceAll(charactersToRemove, "");
+                // Check if the word has already been added to list
+                if (!checkWordList(word))
+                {
+                  wordList.put(word.toLowerCase(), count);
+                }
+                // If the word exists within the list, update its count
+                else if (checkWordList(word))
+                {
+                  count = wordList.get(word);
+                  int update = count + 1;
+                  wordList.replace(word, update);
+                }
+              }
+          }
+      }
+      catch (IOException e)
+      {
+        e.printStackTrace();
+      }
   }
+
+  public static boolean checkWordList(String word)
+  {
+    return wordList.containsKey(word.toLowerCase());
+  }
+
 
   // based on a letter typed in by the user, return 3 word guesses in an array
   // letter: letter typed in by the user
