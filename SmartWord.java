@@ -102,9 +102,43 @@ public class SmartWord
   // a.         true                correct word
   // b.         false               null
   // c.         false               correct word
-  public void feedback (final boolean isCorrectGuess, final String correctWord)        
-  {
-
-  }
-
+  public void feedback (final boolean isCorrectGuess, final String correctWord) {
+    // a. if the guess was correct, we increase the frequency for the correct word
+    if (isCorrectGuess) {
+        increaseFrequency(correctWord);
+    } else {
+        // b. null if none of the guesses is correct, before the user has typed in last letter
+        if (correctWord == null) {
+            System.out.println("no correct guess yet");
+            // c. correct word if none of the guesses is correct, and the user has typed in the last letter
+        } else {
+            increaseFrequency(correctWord);
+            // but decrease frequency of the incorrect guess/
+            for (String guess : guesses) {
+                if (guess != null && !guess.equals(correctWord)) {
+                    decreaseFrequency(guess);
+                }
+            }
+        }
+    }
+}
+    // increasing the weight of the correct word
+    // Added: ones that are constantly use or recognized to be used previously,bump up by two
+    private void increaseFrequency(String word) {
+        int currentFrequency = wordFrequencyMap.getOrDefault(word, 0);
+        int increment = currentFrequency > 0 ? 2 : 1;  // increase by 1, if used before, up by 2
+        wordFrequencyMap.put(word, currentFrequency + increment);
+}
+    // added decreasefrequency 
+    private void decreaseFrequency(String word) {
+        int currentFrequency = wordFrequencyMap.getOrDefault(word,0);
+        // decrease frequency only if it is greater than 0
+        if (currentFrequency > 0) {
+            wordFrequencyMap.put(word, currentFrequency - 1);
+        }
+    }
+    // get the frequency of a word
+    public int getWordFrequency(String word) {
+        return wordFrequencyMap.getOrDefault(word, 0);
+    }
 }
