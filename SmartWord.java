@@ -20,12 +20,14 @@ public class SmartWord
   final String[] guesses = new String[3];  // 3 guesses from SmartWord
   public static TreeMap<String, Integer> wordList = new TreeMap<>();
 
-  private final Trie trie;
+  private final Trie trie; 
+  private final Map<String, Integer> wordFrequencyMap;
     
     // Initialize the tree with the words from the file:
     public SmartWord(String wordFile) 
     {
         this.trie = new Trie();
+        this.wordFrequencyMap = new HashMap<>();
         try (BufferedReader br = new BufferedReader(new FileReader(wordFile))) {
             String word;
             while ((word = br.readLine()) != null) {
