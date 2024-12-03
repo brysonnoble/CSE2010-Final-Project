@@ -86,23 +86,6 @@ public class SmartWord {
         }
     }  
 
-    // Collects all words from a TrieNode that match the given prefix and they are added to the priority queue in lexicographical order:
-    private void collectWords (final TrieNode node, final String prefix, final PriorityQueue<String> matches) {
-        if (node.isWord) matches.offer(prefix);
-        if (node.left != null)
-        {
-            collectWords(node.left, prefix, matches);
-        }
-        if (node.middle != null)
-        {
-            collectWords(node.middle, prefix + node.c, matches);
-        }
-        if (node.right != null)
-        {
-            collectWords(node.right, prefix, matches);
-        }
-    }
-
     // Predicts up to three word suggestions based on the current prefix and the suggestions are ranked by frequency and lexicographical order:
     public String[] guess (final char letter, final int letterPosition, final int wordPosition) {
         if (letterPosition == 0) currentWordPrefix.setLength(0);
@@ -119,8 +102,6 @@ public class SmartWord {
             final int freqDiff = wordFrequencyMap.getOrDefault(b, 0) - wordFrequencyMap.getOrDefault(a, 0);
             return freqDiff != 0 ? freqDiff : a.compareTo(b);
         });
-
-        collectWords(node, currentWordPrefix.toString(), matches);
 
         // Consider context of word to make guess
         if (wordPosition > 0)
