@@ -2,32 +2,32 @@ import java.io.*;
 import java.util.*;
 
 public class SmartWord {
-    
+
     private final Trie trie;
     private final Map<String, Integer> wordFrequencyMap = new HashMap<>();
     private final StringBuilder currentWordPrefix = new StringBuilder();
-    private TrieNode currentNode = null; // Keep track of current Trie node during typing.
+    private TrieNode currentNode = null;
     private final String[] guesses = new String[3];
 
     public SmartWord(final String wordFile) {
         trie = new Trie();
-        try (final BufferedReader br = new BufferedReader(new FileReader(wordFile))) {
+        try (BufferedReader br = new BufferedReader(new FileReader(wordFile))) {
             String word;
             while ((word = br.readLine()) != null) {
                 word = word.toLowerCase().trim();
                 if (!word.isEmpty()) {
                     wordFrequencyMap.put(word, 1);
-                    trie.insert(word, 1, wordFrequencyMap);
+                    trie.insert(word, 1);
                 }
             }
         } catch (IOException e) {
             System.err.println("Error reading word file: " + e.getMessage());
         }
+        trie.precomputeBestSuggestions(wordFrequencyMap);
     }
 
     public void processOldMessages(final String oldMessageFile) {
         try (BufferedReader br = new BufferedReader(new FileReader(oldMessageFile))) {
-            String prevWord = null;
             StringBuilder wordBuilder = new StringBuilder();
             char[] buffer = new char[1024];
             int read;
@@ -42,19 +42,15 @@ public class SmartWord {
                             String word = wordBuilder.toString();
                             wordBuilder.setLength(0);
                             wordFrequencyMap.merge(word, 1, Integer::sum);
-                            trie.insert(word, wordFrequencyMap.get(word), wordFrequencyMap);
-
-                            if (prevWord != null) {
-                                prevWord = word;
-                            }
+                            trie.insert(word, wordFrequencyMap.get(word));
                         }
-                        if (c == '\n') prevWord = null;
                     }
                 }
             }
         } catch (IOException e) {
             System.err.println("Error processing old messages: " + e.getMessage());
         }
+        trie.precomputeBestSuggestions(wordFrequencyMap);
     }
 
     public String[] guess(final char letter, final int letterPosition, final int wordPosition) {
@@ -62,91 +58,108 @@ public class SmartWord {
             currentWordPrefix.setLength(0);
             currentNode = trie.root;
         }
-    
-        // Append letter to the prefix
+
         currentWordPrefix.append(letter);
-    
-        // Validate that the letter is between 'a' and 'z'
-        if (letter < 'a' || letter > 'z') {
+
+        if (letter < 'a' || letter > 'z' || currentNode == null) {
             Arrays.fill(guesses, null);
-            currentNode = null; // Reset current node for invalid input
+            currentNode = null; // Reset if input is invalid
             return guesses;
         }
-    
+
         int index = letter - 'a';
-        if (currentNode == null || currentNode.children[index] == null) {
-            Arrays.fill(guesses, null);
-            currentNode = null; // Reset current node for invalid input
-            return guesses;
-        }
-    
         currentNode = currentNode.children[index];
-    
-        // Use a priority queue to store matches based on frequency and lexicographical order
-        PriorityQueue<String> matches = new PriorityQueue<>((a, b) -> {
-            int freqDiff = wordFrequencyMap.getOrDefault(b, 0) - wordFrequencyMap.getOrDefault(a, 0);
-            return freqDiff != 0 ? freqDiff : a.compareTo(b);
-        });
-    
-        // Add best suggestion if available
-        if (currentNode.bestSuggestion != null) {
-            matches.offer(currentNode.bestSuggestion);
+
+        if (currentNode == null) {
+            Arrays.fill(guesses, null);
+            return guesses; // No further suggestions available
         }
-    
-        // Populate guesses with up to 3 suggestions
-        for (int i = 0; i < 3; i++) {
-            guesses[i] = matches.isEmpty() ? null : matches.poll();
-        }
+
+        // Fetch precomputed best suggestion
+        String bestSuggestion = currentNode.bestSuggestion;
+        guesses[0] = bestSuggestion;
+
+        // Fill remaining guesses if needed
+        guesses[1] = null;
+        guesses[2] = null;
+
         return guesses;
     }
-    
+
     public void feedback(final boolean isCorrectGuess, final String correctWord) {
-        if (correctWord == null) return;
+        if (correctWord == null || !correctWord.matches("^[a-z]+$")) return;
     
-        // Update the frequency of the correct word
-        wordFrequencyMap.put(correctWord, wordFrequencyMap.getOrDefault(correctWord, 0) + (isCorrectGuess ? 5 : 2));
+        int adjustment = isCorrectGuess ? 10 : -2;
+        wordFrequencyMap.put(correctWord, Math.max(0, wordFrequencyMap.getOrDefault(correctWord, 0) + adjustment));
     
-        // Update the bestSuggestion fields in the Trie
-        TrieNode node = trie.root;
-        for (char c : correctWord.toCharArray()) {
-            // Validate that the character is between 'a' and 'z'
-            if (c < 'a' || c > 'z') {
-                continue; // Skip invalid characters
-            }
-            int index = c - 'a';
-            if (node == null || node.children[index] == null) {
-                return; // Stop updating if the path does not exist
-            }
-            node = node.children[index];
-            if (node.bestSuggestion == null || wordFrequencyMap.get(correctWord) > wordFrequencyMap.getOrDefault(node.bestSuggestion, 0)) {
-                node.bestSuggestion = correctWord;
-            }
-        }
+        trie.updateBestSuggestions(correctWord, wordFrequencyMap);
     }    
 
     private static class Trie {
         private final TrieNode root = new TrieNode();
 
-        public void insert(final String word, final int frequency, final Map<String, Integer> wordFrequencyMap) {
+        public void insert(final String word, final int frequency) {
             TrieNode node = root;
             for (char c : word.toCharArray()) {
-                if (c < 'a' || c > 'z') continue;
                 int index = c - 'a';
                 if (node.children[index] == null) {
                     node.children[index] = new TrieNode();
                 }
                 node = node.children[index];
-                if (node.bestSuggestion == null || frequency > wordFrequencyMap.getOrDefault(node.bestSuggestion, 0)) {
+            }
+            node.isWord = true;
+            node.frequency = frequency;
+        }
+
+        public void precomputeBestSuggestions(Map<String, Integer> wordFrequencyMap) {
+            computeBestSuggestions(root, "", wordFrequencyMap);
+        }
+
+        private void computeBestSuggestions(TrieNode node, String prefix, Map<String, Integer> wordFrequencyMap) {
+            if (node == null) return;
+
+            if (node.isWord) {
+                node.bestSuggestion = prefix;
+            }
+
+            for (int i = 0; i < 26; i++) {
+                if (node.children[i] != null) {
+                    computeBestSuggestions(node.children[i], prefix + (char) ('a' + i), wordFrequencyMap);
+
+                    // Update the best suggestion for the current node
+                    TrieNode child = node.children[i];
+                    if (child.bestSuggestion != null && 
+                        (node.bestSuggestion == null || 
+                         wordFrequencyMap.getOrDefault(child.bestSuggestion, 0) > wordFrequencyMap.getOrDefault(node.bestSuggestion, 0))) {
+                        node.bestSuggestion = child.bestSuggestion;
+                    }
+                }
+            }
+        }
+
+        public void updateBestSuggestions(String word, Map<String, Integer> wordFrequencyMap) {
+            TrieNode node = root;
+            for (char c : word.toCharArray()) {
+                // Validate the character
+                if (c < 'a' || c > 'z') {
+                    return; // Skip invalid words
+                }
+                int index = c - 'a';
+                if (node.children[index] == null) return;
+                node = node.children[index];
+        
+                if (node.bestSuggestion == null || 
+                    wordFrequencyMap.getOrDefault(word, 0) > wordFrequencyMap.getOrDefault(node.bestSuggestion, 0)) {
                     node.bestSuggestion = word;
                 }
             }
-            node.isWord = true;
-        }
+        }        
     }
 
     private static class TrieNode {
         private final TrieNode[] children = new TrieNode[26];
         private boolean isWord;
-        private String bestSuggestion;
+        private int frequency = 0; // Frequency of the word at this node
+        private String bestSuggestion = null; // Best suggestion for this prefix
     }
 }
