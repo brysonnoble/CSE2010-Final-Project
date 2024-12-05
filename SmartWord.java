@@ -22,6 +22,7 @@
 
 import java.util.*;
 import java.io.*;
+import java.util.stream.Collectors;
 
 public class SmartWord {
 
@@ -90,15 +91,42 @@ public class SmartWord {
         trie.insert(word, wordFrequencyMap.get(word));
 
         if (previousWord != null) {
-            bigramFrequencyMap
-                .computeIfAbsent(previousWord, k -> new HashMap<>())
-                .merge(word, 1, Integer::sum);
+            bigramFrequencyMap.computeIfAbsent(previousWord, k -> new HashMap<>()).merge(word, 1, Integer::sum);
+            limitFrequencyMap(bigramFrequencyMap.get(previousWord));
         }
         if (prePreviousWord != null) {
             trigramFrequencyMap
                 .computeIfAbsent(prePreviousWord, k -> new HashMap<>())
                 .computeIfAbsent(previousWord, k -> new HashMap<>())
                 .merge(word, 1, Integer::sum);
+            limitFrequencyMap(trigramFrequencyMap.get(prePreviousWord).get(previousWord));
+        }
+    }
+
+    private List<String> getContextualSuggestions(List<String> suggestions, String[] previousWords) {
+        int nGramLength = Math.min(previousWords.length, 4);
+        Map<String, Integer> contextualMap = new HashMap<>();
+
+        for (int i = 0; i < suggestions.size(); i++) {
+            String suggestion = suggestions.get(i);
+            int score = calculateContextScore(suggestion, previousWords, nGramLength);
+            contextualMap.put(suggestion, score);
+        }
+
+        return contextualMap.entrySet().stream().sorted((a, b) -> Integer.compare(b.getValue(), a.getValue())).map(Map.Entry::getKey).collect(Collectors.toList());
+    }
+
+    private int calculateContextScore(String suggestion, String[] previousWords, int nGramLength) {
+        int score = 0;
+        for (int i = 0; i < nGramLength; i++) {
+            score += bigramFrequencyMap.getOrDefault(previousWords[i], new HashMap<>()).getOrDefault(suggestion, 0);
+        }
+        return score;
+    }
+
+    private void limitFrequencyMap(Map<String, Integer> map) {
+        if (map.size() > 50) {
+            map.entrySet().removeIf(entry -> entry.getValue() < Collections.min(map.values()));
         }
     }
 
@@ -143,12 +171,13 @@ public class SmartWord {
     }
 
     private List<String> refineSuggestionsWithContext(List<String> suggestions, String lastWord, String secondLastWord) {
-        Map<String, Map<String, Integer>> nextWordMap = trigramFrequencyMap.getOrDefault(secondLastWord, Collections.emptyMap());
-        Map<String, Integer> nextWordFrequencies = nextWordMap.getOrDefault(lastWord, Collections.emptyMap());
+        Map<String, Integer> bigramScores = bigramFrequencyMap.getOrDefault(lastWord, new HashMap<>());
+        Map<String, Map<String, Integer>> trigramMap = trigramFrequencyMap.getOrDefault(secondLastWord, new HashMap<>());
+        Map<String, Integer> trigramScores = trigramMap.getOrDefault(lastWord, new HashMap<>());
 
         suggestions.sort((a, b) -> {
-            int trigramA = nextWordFrequencies.getOrDefault(a, 0);
-            int trigramB = nextWordFrequencies.getOrDefault(b, 0);
+            int trigramA = bigramScores.getOrDefault(a, 0) + trigramScores.getOrDefault(a, 0);
+            int trigramB = bigramScores.getOrDefault(b, 0) + trigramScores.getOrDefault(b, 0);
             return trigramB - trigramA;
         });
 
@@ -158,7 +187,7 @@ public class SmartWord {
     public void feedback(final boolean isCorrectGuess, final String correctWord) {
         if (correctWord == null || !correctWord.matches("^[a-z]+$")) return;
 
-        int adjustment = isCorrectGuess ? 10 : -2;
+        int adjustment = isCorrectGuess ? 50 : -2;
         wordFrequencyMap.put(correctWord, Math.max(0, wordFrequencyMap.getOrDefault(correctWord, 0) + adjustment));
         trie.updateBestSuggestions(correctWord, wordFrequencyMap);
 
@@ -242,6 +271,10 @@ public class SmartWord {
 
                 if (!node.bestSuggestions.contains(word)) {
                     node.bestSuggestions.add(word);
+                    if (node.bestSuggestions.size() > 10) {
+                        node.bestSuggestions.sort((a, b) -> wordFrequencyMap.get(b) - wordFrequencyMap.get(a));
+                        node.bestSuggestions.remove(node.bestSuggestions.size() - 1);
+                    }
                 }
             }
         }
@@ -262,6 +295,6 @@ public class SmartWord {
         private final TrieNode[] children = new TrieNode[26];
         private boolean isWord;
         private int frequency = 0;
-        private final List<String> bestSuggestions = new ArrayList<>();
+        private final List<String> bestSuggestions = new ArrayList<>(3);
     }
 }
