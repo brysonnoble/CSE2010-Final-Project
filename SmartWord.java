@@ -65,10 +65,9 @@ public class SmartWord {
             String prevWord = null;
             StringBuilder sanitizedLine = new StringBuilder();
             String line;
-            
+    
             while ((line = br.readLine()) != null) {
-                // Pre-clean line to avoid repetitive operations
-                sanitizedLine.setLength(0); // Clear the StringBuilder
+                sanitizedLine.setLength(0);
                 for (char c : line.toCharArray()) {
                     if (Character.isLetter(c)) {
                         sanitizedLine.append(Character.toLowerCase(c));
@@ -76,16 +75,16 @@ public class SmartWord {
                         sanitizedLine.append(' ');
                     }
                 }
-                
-                // Split sanitized line into words
+    
                 String[] words = sanitizedLine.toString().split("\\s+");
                 for (String word : words) {
                     if (!word.isEmpty()) {
-                        // Update Trie and word frequency
-                        trie.insert(word);
+                        if (!wordFrequencyMap.containsKey(word)) {
+                            trie.insert(word); // Insert only if not already present
+                        }
                         wordFrequencyMap.put(word, wordFrequencyMap.getOrDefault(word, 0) + 1);
     
-                        // Update bigram frequency
+                        // Update bigram frequencies efficiently
                         if (prevWord != null) {
                             bigramFrequencyMap.computeIfAbsent(prevWord, k -> new HashMap<>())
                                               .merge(word, 1, Integer::sum);
@@ -97,45 +96,52 @@ public class SmartWord {
         } catch (IOException e) {
             System.err.println("Error processing old messages: " + e.getMessage());
         }
-    }
-    
+    }  
 
     // Collects all words from a TrieNode that match the given prefix and they are added to the priority queue in lexicographical order:
-    private void collectWords (final TrieNode node, final String prefix, final PriorityQueue<String> matches) {
-        if (node.isWord) matches.offer(prefix);
+    private void collectWords(TrieNode node, String prefix, PriorityQueue<String> matches, int maxDepth) {
+        if (matches.size() >= 3 || maxDepth == 0) return; // Stop early if 3 matches are found
+    
+        if (node.isWord) {
+            matches.offer(prefix);
+            if (matches.size() > 3) matches.poll(); // Keep only the top 3
+        }
+    
         for (int i = 0; i < 26; i++) {
             if (node.children[i] != null) {
-                final char nextChar = (char) ('a' + i);
-                collectWords(node.children[i], prefix + nextChar, matches);
+                char nextChar = (char) ('a' + i);
+                collectWords(node.children[i], prefix + nextChar, matches, maxDepth - 1);
             }
         }
-    }
+    }    
 
     // Predicts up to three word suggestions based on the current prefix and the suggestions are ranked by frequency and lexicographical order:
-    public String[] guess (final char letter, final int letterPosition, final int wordPosition) {
+    public String[] guess(final char letter, final int letterPosition, final int wordPosition) {
         if (letterPosition == 0) currentWordPrefix.setLength(0);
         currentWordPrefix.append(letter);
-
-        final TrieNode node = trie.findNode(currentWordPrefix.toString());
+    
+        TrieNode node = trie.findNode(currentWordPrefix.toString());
         if (node == null) {
             Arrays.fill(guesses, null);
             return guesses;
         }
-
-        // Priority queue to store words sorted by frequency and lexicographical order:
-        final PriorityQueue<String> matches = new PriorityQueue<>((a, b) -> {
-            final int freqDiff = wordFrequencyMap.getOrDefault(b, 0) - wordFrequencyMap.getOrDefault(a, 0);
-            return freqDiff != 0 ? freqDiff : a.compareTo(b);
-        });
-
-        collectWords(node, currentWordPrefix.toString(), matches);
-
-        // Populate the guesses array with up to 3 suggestions:
+    
+        PriorityQueue<String> matches = new PriorityQueue<>(
+            (a, b) -> {
+                int freqDiff = wordFrequencyMap.getOrDefault(b, 0) - wordFrequencyMap.getOrDefault(a, 0);
+                return freqDiff != 0 ? freqDiff : a.compareTo(b); // Frequency first, lexicographical second
+            }
+        );
+    
+        // Limit depth to optimize performance
+        collectWords(node, currentWordPrefix.toString(), matches, 5);
+    
         for (int i = 0; i < 3; i++) {
             guesses[i] = matches.isEmpty() ? null : matches.poll();
         }
         return guesses;
-    }  
+    }
+    
 
     // Updates word frequencies based on feedback from the user and rewards or penalizes words to improve future predictions:
     public void feedback (final boolean isCorrectGuess, final String correctWord) {
