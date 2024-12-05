@@ -5,9 +5,11 @@ public class SmartWord {
 
     private final Trie trie;
     private final Map<String, Integer> wordFrequencyMap = new HashMap<>();
+    private final Map<String, Map<String, Integer>> bigramFrequencyMap = new HashMap<>();
     private final StringBuilder currentWordPrefix = new StringBuilder();
     private TrieNode currentNode = null;
     private final String[] guesses = new String[3];
+    private String lastWord = null;
 
     public SmartWord(final String wordFile) {
         trie = new Trie();
@@ -28,6 +30,7 @@ public class SmartWord {
 
     public void processOldMessages(final String oldMessageFile) {
         try (BufferedReader br = new BufferedReader(new FileReader(oldMessageFile))) {
+            String previousWord = null;
             StringBuilder wordBuilder = new StringBuilder();
             char[] buffer = new char[1024];
             int read;
@@ -41,8 +44,17 @@ public class SmartWord {
                         if (wordBuilder.length() > 0) {
                             String word = wordBuilder.toString();
                             wordBuilder.setLength(0);
+
                             wordFrequencyMap.merge(word, 1, Integer::sum);
                             trie.insert(word, wordFrequencyMap.get(word));
+
+                            if (previousWord != null) {
+                                bigramFrequencyMap
+                                    .computeIfAbsent(previousWord, k -> new HashMap<>())
+                                    .merge(word, 1, Integer::sum);
+                            }
+
+                            previousWord = word;
                         }
                     }
                 }
@@ -57,6 +69,7 @@ public class SmartWord {
         if (letterPosition == 0) {
             currentWordPrefix.setLength(0);
             currentNode = trie.root;
+            lastWord = null; // Reset last word for new context
         }
 
         currentWordPrefix.append(letter);
@@ -75,25 +88,45 @@ public class SmartWord {
             return guesses; // No further suggestions available
         }
 
-        // Fetch precomputed best suggestion
-        String bestSuggestion = currentNode.bestSuggestion;
-        guesses[0] = bestSuggestion;
+        List<String> suggestions = trie.getSuggestions(
+            currentNode,
+            currentWordPrefix.toString(),
+            10,
+            wordFrequencyMap
+        );
 
-        // Fill remaining guesses if needed
-        guesses[1] = null;
-        guesses[2] = null;
+        // Enhance suggestions with bigram context
+        if (lastWord != null && bigramFrequencyMap.containsKey(lastWord)) {
+            Map<String, Integer> nextWordMap = bigramFrequencyMap.get(lastWord);
+            suggestions.sort((a, b) -> {
+                int bigramA = nextWordMap.getOrDefault(a, 0);
+                int bigramB = nextWordMap.getOrDefault(b, 0);
+                return bigramB - bigramA;
+            });
+        }
+
+        for (int i = 0; i < 3; i++) {
+            guesses[i] = i < suggestions.size() ? suggestions.get(i) : null;
+        }
 
         return guesses;
     }
 
     public void feedback(final boolean isCorrectGuess, final String correctWord) {
         if (correctWord == null || !correctWord.matches("^[a-z]+$")) return;
-    
+
         int adjustment = isCorrectGuess ? 10 : -2;
         wordFrequencyMap.put(correctWord, Math.max(0, wordFrequencyMap.getOrDefault(correctWord, 0) + adjustment));
-    
+
         trie.updateBestSuggestions(correctWord, wordFrequencyMap);
-    }    
+
+        if (lastWord != null) {
+            bigramFrequencyMap
+                .computeIfAbsent(lastWord, k -> new HashMap<>())
+                .merge(correctWord, 1, Integer::sum);
+        }
+        lastWord = correctWord;
+    }
 
     private static class Trie {
         private final TrieNode root = new TrieNode();
@@ -119,47 +152,66 @@ public class SmartWord {
             if (node == null) return;
 
             if (node.isWord) {
-                node.bestSuggestion = prefix;
+                node.bestSuggestions.add(prefix);
             }
 
             for (int i = 0; i < 26; i++) {
                 if (node.children[i] != null) {
                     computeBestSuggestions(node.children[i], prefix + (char) ('a' + i), wordFrequencyMap);
 
-                    // Update the best suggestion for the current node
+                    // Merge suggestions from child nodes
                     TrieNode child = node.children[i];
-                    if (child.bestSuggestion != null && 
-                        (node.bestSuggestion == null || 
-                         wordFrequencyMap.getOrDefault(child.bestSuggestion, 0) > wordFrequencyMap.getOrDefault(node.bestSuggestion, 0))) {
-                        node.bestSuggestion = child.bestSuggestion;
-                    }
+                    mergeSuggestions(node.bestSuggestions, child.bestSuggestions, wordFrequencyMap);
                 }
             }
+        }
+
+        public List<String> getSuggestions(TrieNode node, String prefix, int count, Map<String, Integer> wordFrequencyMap) {
+            PriorityQueue<Map.Entry<String, Integer>> pq = new PriorityQueue<>(
+                (a, b) -> b.getValue() - a.getValue()
+            );
+
+            for (String suggestion : node.bestSuggestions) {
+                pq.add(Map.entry(suggestion, wordFrequencyMap.getOrDefault(suggestion, 0)));
+            }
+
+            List<String> results = new ArrayList<>();
+            while (!pq.isEmpty() && results.size() < count) {
+                results.add(pq.poll().getKey());
+            }
+
+            return results;
         }
 
         public void updateBestSuggestions(String word, Map<String, Integer> wordFrequencyMap) {
             TrieNode node = root;
             for (char c : word.toCharArray()) {
-                // Validate the character
-                if (c < 'a' || c > 'z') {
-                    return; // Skip invalid words
-                }
                 int index = c - 'a';
                 if (node.children[index] == null) return;
                 node = node.children[index];
-        
-                if (node.bestSuggestion == null || 
-                    wordFrequencyMap.getOrDefault(word, 0) > wordFrequencyMap.getOrDefault(node.bestSuggestion, 0)) {
-                    node.bestSuggestion = word;
+
+                if (!node.bestSuggestions.contains(word)) {
+                    node.bestSuggestions.add(word);
                 }
             }
-        }        
+        }
+
+        private void mergeSuggestions(List<String> parent, List<String> child, Map<String, Integer> wordFrequencyMap) {
+            Set<String> merged = new HashSet<>(parent);
+            merged.addAll(child);
+            parent.clear();
+
+            parent.addAll(merged.stream()
+                    .sorted((a, b) -> wordFrequencyMap.getOrDefault(b, 0) - wordFrequencyMap.getOrDefault(a, 0))
+                    .limit(10)
+                    .toList());
+        }
     }
 
     private static class TrieNode {
         private final TrieNode[] children = new TrieNode[26];
         private boolean isWord;
-        private int frequency = 0; // Frequency of the word at this node
-        private String bestSuggestion = null; // Best suggestion for this prefix
+        private int frequency = 0;
+        private final List<String> bestSuggestions = new ArrayList<>();
     }
 }
