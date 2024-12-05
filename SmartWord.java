@@ -1,18 +1,24 @@
-import java.io.*;
 import java.util.*;
+import java.io.*;
 
 public class SmartWord {
 
     private final Trie trie;
     private final Map<String, Integer> wordFrequencyMap = new HashMap<>();
     private final Map<String, Map<String, Integer>> bigramFrequencyMap = new HashMap<>();
+    private final Map<String, Map<String, Map<String, Integer>>> trigramFrequencyMap = new HashMap<>();
     private final StringBuilder currentWordPrefix = new StringBuilder();
     private TrieNode currentNode = null;
     private final String[] guesses = new String[3];
     private String lastWord = null;
+    private String secondLastWord = null;
 
     public SmartWord(final String wordFile) {
         trie = new Trie();
+        loadVocabulary(wordFile);
+    }
+
+    private void loadVocabulary(String wordFile) {
         try (BufferedReader br = new BufferedReader(new FileReader(wordFile))) {
             String word;
             while ((word = br.readLine()) != null) {
@@ -25,12 +31,12 @@ public class SmartWord {
         } catch (IOException e) {
             System.err.println("Error reading word file: " + e.getMessage());
         }
-        trie.precomputeBestSuggestions(wordFrequencyMap);
     }
 
     public void processOldMessages(final String oldMessageFile) {
         try (BufferedReader br = new BufferedReader(new FileReader(oldMessageFile))) {
             String previousWord = null;
+            String prePreviousWord = null;
             StringBuilder wordBuilder = new StringBuilder();
             char[] buffer = new char[1024];
             int read;
@@ -44,16 +50,8 @@ public class SmartWord {
                         if (wordBuilder.length() > 0) {
                             String word = wordBuilder.toString();
                             wordBuilder.setLength(0);
-
-                            wordFrequencyMap.merge(word, 1, Integer::sum);
-                            trie.insert(word, wordFrequencyMap.get(word));
-
-                            if (previousWord != null) {
-                                bigramFrequencyMap
-                                    .computeIfAbsent(previousWord, k -> new HashMap<>())
-                                    .merge(word, 1, Integer::sum);
-                            }
-
+                            updateFrequencies(word, previousWord, prePreviousWord);
+                            prePreviousWord = previousWord;
                             previousWord = word;
                         }
                     }
@@ -65,18 +63,34 @@ public class SmartWord {
         trie.precomputeBestSuggestions(wordFrequencyMap);
     }
 
+    private void updateFrequencies(String word, String previousWord, String prePreviousWord) {
+        wordFrequencyMap.merge(word, 1, Integer::sum);
+        trie.insert(word, wordFrequencyMap.get(word));
+
+        if (previousWord != null) {
+            bigramFrequencyMap
+                .computeIfAbsent(previousWord, k -> new HashMap<>())
+                .merge(word, 1, Integer::sum);
+        }
+        if (prePreviousWord != null) {
+            trigramFrequencyMap
+                .computeIfAbsent(prePreviousWord, k -> new HashMap<>())
+                .computeIfAbsent(previousWord, k -> new HashMap<>())
+                .merge(word, 1, Integer::sum);
+        }
+    }
+
     public String[] guess(final char letter, final int letterPosition, final int wordPosition) {
         if (letterPosition == 0) {
             currentWordPrefix.setLength(0);
             currentNode = trie.root;
-            lastWord = null; // Reset last word for new context
         }
 
         currentWordPrefix.append(letter);
 
         if (letter < 'a' || letter > 'z' || currentNode == null) {
             Arrays.fill(guesses, null);
-            currentNode = null; // Reset if input is invalid
+            currentNode = null;
             return guesses;
         }
 
@@ -85,7 +99,7 @@ public class SmartWord {
 
         if (currentNode == null) {
             Arrays.fill(guesses, null);
-            return guesses; // No further suggestions available
+            return guesses;
         }
 
         List<String> suggestions = trie.getSuggestions(
@@ -95,14 +109,8 @@ public class SmartWord {
             wordFrequencyMap
         );
 
-        // Enhance suggestions with bigram context
-        if (lastWord != null && bigramFrequencyMap.containsKey(lastWord)) {
-            Map<String, Integer> nextWordMap = bigramFrequencyMap.get(lastWord);
-            suggestions.sort((a, b) -> {
-                int bigramA = nextWordMap.getOrDefault(a, 0);
-                int bigramB = nextWordMap.getOrDefault(b, 0);
-                return bigramB - bigramA;
-            });
+        if (secondLastWord != null && lastWord != null) {
+            suggestions = refineSuggestionsWithContext(suggestions, lastWord, secondLastWord);
         }
 
         for (int i = 0; i < 3; i++) {
@@ -112,12 +120,24 @@ public class SmartWord {
         return guesses;
     }
 
+    private List<String> refineSuggestionsWithContext(List<String> suggestions, String lastWord, String secondLastWord) {
+        Map<String, Map<String, Integer>> nextWordMap = trigramFrequencyMap.getOrDefault(secondLastWord, Collections.emptyMap());
+        Map<String, Integer> nextWordFrequencies = nextWordMap.getOrDefault(lastWord, Collections.emptyMap());
+
+        suggestions.sort((a, b) -> {
+            int trigramA = nextWordFrequencies.getOrDefault(a, 0);
+            int trigramB = nextWordFrequencies.getOrDefault(b, 0);
+            return trigramB - trigramA;
+        });
+
+        return suggestions;
+    }
+
     public void feedback(final boolean isCorrectGuess, final String correctWord) {
         if (correctWord == null || !correctWord.matches("^[a-z]+$")) return;
 
         int adjustment = isCorrectGuess ? 10 : -2;
         wordFrequencyMap.put(correctWord, Math.max(0, wordFrequencyMap.getOrDefault(correctWord, 0) + adjustment));
-
         trie.updateBestSuggestions(correctWord, wordFrequencyMap);
 
         if (lastWord != null) {
@@ -125,9 +145,18 @@ public class SmartWord {
                 .computeIfAbsent(lastWord, k -> new HashMap<>())
                 .merge(correctWord, 1, Integer::sum);
         }
+        if (secondLastWord != null && lastWord != null) {
+            trigramFrequencyMap
+                .computeIfAbsent(secondLastWord, k -> new HashMap<>())
+                .computeIfAbsent(lastWord, k -> new HashMap<>())
+                .merge(correctWord, 1, Integer::sum);
+        }
+
+        secondLastWord = lastWord;
         lastWord = correctWord;
     }
 
+    // Trie Implementation
     private static class Trie {
         private final TrieNode root = new TrieNode();
 
@@ -159,7 +188,6 @@ public class SmartWord {
                 if (node.children[i] != null) {
                     computeBestSuggestions(node.children[i], prefix + (char) ('a' + i), wordFrequencyMap);
 
-                    // Merge suggestions from child nodes
                     TrieNode child = node.children[i];
                     mergeSuggestions(node.bestSuggestions, child.bestSuggestions, wordFrequencyMap);
                 }
