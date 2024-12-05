@@ -60,22 +60,35 @@ public class SmartWord {
     }
     
     // Processes an old message file to learn from past user behavior and extracts individual words and word pairs (bigrams) for frequency analysis:
-    public void processOldMessages (final String oldMessageFile) {
-        try (final BufferedReader br = new BufferedReader(new FileReader(oldMessageFile))) {
+    public void processOldMessages(final String oldMessageFile) {
+        try (BufferedReader br = new BufferedReader(new FileReader(oldMessageFile))) {
             String prevWord = null;
+            StringBuilder sanitizedLine = new StringBuilder();
             String line;
+            
             while ((line = br.readLine()) != null) {
-                final String[] words = line.toLowerCase().split("\\W+");
+                // Pre-clean line to avoid repetitive operations
+                sanitizedLine.setLength(0); // Clear the StringBuilder
+                for (char c : line.toCharArray()) {
+                    if (Character.isLetter(c)) {
+                        sanitizedLine.append(Character.toLowerCase(c));
+                    } else {
+                        sanitizedLine.append(' ');
+                    }
+                }
+                
+                // Split sanitized line into words
+                String[] words = sanitizedLine.toString().split("\\s+");
                 for (String word : words) {
-                    word = sanitize(word);
                     if (!word.isEmpty()) {
+                        // Update Trie and word frequency
                         trie.insert(word);
                         wordFrequencyMap.put(word, wordFrequencyMap.getOrDefault(word, 0) + 1);
-
+    
                         // Update bigram frequency
                         if (prevWord != null) {
-                            bigramFrequencyMap.putIfAbsent(prevWord, new HashMap<>());
-                            bigramFrequencyMap.get(prevWord).put(word, bigramFrequencyMap.get(prevWord).getOrDefault(word, 0) + 1);
+                            bigramFrequencyMap.computeIfAbsent(prevWord, k -> new HashMap<>())
+                                              .merge(word, 1, Integer::sum);
                         }
                         prevWord = word;
                     }
@@ -84,7 +97,8 @@ public class SmartWord {
         } catch (IOException e) {
             System.err.println("Error processing old messages: " + e.getMessage());
         }
-    }  
+    }
+    
 
     // Collects all words from a TrieNode that match the given prefix and they are added to the priority queue in lexicographical order:
     private void collectWords (final TrieNode node, final String prefix, final PriorityQueue<String> matches) {
