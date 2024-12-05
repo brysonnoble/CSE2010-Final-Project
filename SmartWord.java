@@ -1,3 +1,25 @@
+/*
+
+ Authors (group members): Ashley McKim, Bryson Noble, Calvin Rutherford, Matteo Caruso
+ Email addresses of group members: amckim2022@my.fit.edu, bnoble2023@my.fit.edu, crutherford2023@my.fit.edu, mcaruso2023@my.fit.edu
+ 
+ Group name: 34c
+
+ Course: CSE2010
+ 
+ Section: 3 and 4
+
+ Description of the overall algorithm: Autofill function that takes old text recommendations in order to guess how to fill
+ words in new texts, overall speeding up the texting process.
+ 
+ Algorithm Division:
+ - Matteo: SmartWord Initialization: Initializes a list of English words to use in predictions.
+ - Calvin: Old Messages Processing: Processes old messages to adapt suggestions to a user’s past behavior.
+ - Bryson: Guess Function: Provides up to 3 word suggestions as a user types.
+ - Ashley: Feedback Mechanism: Incorporates feedback to improve the accuracy of future guesses.
+
+*/
+
 import java.util.*;
 import java.io.*;
 
